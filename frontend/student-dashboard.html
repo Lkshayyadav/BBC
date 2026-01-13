@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard - Grievance Portal</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <h2 class="logo">Grievance Portal</h2>
+      <div class="nav-links">
+        <span id="userName" class="user-name"></span>
+        <button onclick="logout()" class="btn btn-outline">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="dashboard">
+    <div class="container">
+      <h1>Student Dashboard</h1>
+      
+      <!-- Submit New Complaint Form -->
+      <div class="card">
+        <h2>Submit New Complaint</h2>
+        <div id="complaint-message" class="success-message" style="display: none;"></div>
+        <div id="complaint-error" class="error-message" style="display: none;"></div>
+        
+        <form id="complaintForm">
+          <div class="form-group">
+            <label for="category">Category *</label>
+            <select id="category" name="category" required>
+              <option value="">Select Category</option>
+              <option value="Academic">Academic</option>
+              <option value="Hostel">Hostel</option>
+              <option value="Library">Library</option>
+              <option value="Canteen">Canteen</option>
+              <option value="Infrastructure">Infrastructure</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="description">Description *</label>
+            <textarea id="description" name="description" rows="4" required 
+              placeholder="Describe your grievance in detail..."></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Submit Complaint</button>
+        </form>
+      </div>
+
+      <!-- My Complaints -->
+      <div class="card">
+        <h2>My Complaints</h2>
+        <div id="complaintsContainer">
+          <p class="loading">Loading your complaints...</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="js/config.js"></script>
+  <script>
+    // Check authentication
+    if (!isLoggedIn()) {
+      window.location.href = 'login.html';
+    }
+
+    const user = getUser();
+    if (user.role !== 'student') {
+      window.location.href = 'admin-dashboard.html';
+    }
+
+    // Display user name
+    document.getElementById('userName').textContent = `Welcome, ${user.name}`;
+
+    // Handle complaint submission
+    document.getElementById('complaintForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const messageDiv = document.getElementById('complaint-message');
+      const errorDiv = document.getElementById('complaint-error');
+      messageDiv.style.display = 'none';
+      errorDiv.style.display = 'none';
+
+      const formData = {
+        category: document.getElementById('category').value,
+        description: document.getElementById('description').value
+      };
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/complaints`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          messageDiv.textContent = 'Complaint submitted successfully!';
+          messageDiv.style.display = 'block';
+          document.getElementById('complaintForm').reset();
+          
+          // Reload complaints
+          loadComplaints();
+        } else {
+          errorDiv.textContent = data.message || 'Failed to submit complaint';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    });
+
+    // Load student's complaints
+    async function loadComplaints() {
+      const container = document.getElementById('complaintsContainer');
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/complaints/my`, {
+          headers: {
+            'Authorization': `Bearer ${getToken()}`
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          if (data.complaints.length === 0) {
+            container.innerHTML = '<p class="no-data">No complaints submitted yet.</p>';
+            return;
+          }
+
+          container.innerHTML = data.complaints.map(complaint => `
+            <div class="complaint-card">
+              <div class="complaint-header">
+                <span class="complaint-category">${complaint.category}</span>
+                <span class="status-badge status-${complaint.status.toLowerCase().replace(' ', '-')}">${complaint.status}</span>
+              </div>
+              <p class="complaint-description">${complaint.description}</p>
+              <div class="complaint-footer">
+                <small>Submitted: ${new Date(complaint.createdAt).toLocaleDateString()}</small>
+                ${complaint.assignedTo ? `<small>Assigned to: ${complaint.assignedTo}</small>` : ''}
+              </div>
+              ${complaint.remarks ? `<div class="complaint-remarks"><strong>Remarks:</strong> ${complaint.remarks}</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<p class="error-message">Failed to load complaints</p>';
+        }
+      } catch (error) {
+        container.innerHTML = '<p class="error-message">Network error loading complaints</p>';
+      }
+    }
+
+    // Load complaints on page load
+    loadComplaints();
+  </script>
+</body>
+</html>

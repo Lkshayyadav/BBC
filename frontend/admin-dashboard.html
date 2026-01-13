@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Grievance Portal</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container">
+      <h2 class="logo">Grievance Portal - Admin</h2>
+      <div class="nav-links">
+        <span id="userName" class="user-name"></span>
+        <button onclick="logout()" class="btn btn-outline">Logout</button>
+      </div>
+    </div>
+  </nav>
+
+  <section class="dashboard">
+    <div class="container">
+      <h1>Admin Dashboard</h1>
+
+      <!-- Filters -->
+      <div class="card">
+        <h2>Filter Complaints</h2>
+        <div class="filter-group">
+          <div class="form-group">
+            <label for="filterStatus">Status</label>
+            <select id="filterStatus">
+              <option value="">All Statuses</option>
+              <option value="Pending">Pending</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Resolved">Resolved</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="filterCategory">Category</label>
+            <select id="filterCategory">
+              <option value="">All Categories</option>
+              <option value="Academic">Academic</option>
+              <option value="Hostel">Hostel</option>
+              <option value="Library">Library</option>
+              <option value="Canteen">Canteen</option>
+              <option value="Infrastructure">Infrastructure</option>
+            </select>
+          </div>
+
+          <button onclick="loadComplaints()" class="btn btn-primary">Apply Filters</button>
+        </div>
+      </div>
+
+      <!-- All Complaints -->
+      <div class="card">
+        <h2>All Complaints</h2>
+        <div id="complaintsContainer">
+          <p class="loading">Loading complaints...</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Update Complaint Modal -->
+  <div id="updateModal" class="modal" style="display: none;">
+    <div class="modal-content">
+      <span class="close" onclick="closeModal()">&times;</span>
+      <h2>Update Complaint</h2>
+      
+      <div id="update-message" class="success-message" style="display: none;"></div>
+      <div id="update-error" class="error-message" style="display: none;"></div>
+      
+      <form id="updateForm">
+        <input type="hidden" id="complaintId">
+        
+        <div class="form-group">
+          <label for="updateStatus">Status</label>
+          <select id="updateStatus" required>
+            <option value="Pending">Pending</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Resolved">Resolved</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="assignedTo">Assign To Department</label>
+          <input type="text" id="assignedTo" placeholder="e.g., Academic Department">
+        </div>
+
+        <div class="form-group">
+          <label for="remarks">Remarks</label>
+          <textarea id="remarks" rows="3" placeholder="Add resolution notes..."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-primary">Update Complaint</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script>
+    // Check authentication
+    if (!isLoggedIn()) {
+      window.location.href = 'login.html';
+    }
+
+    const user = getUser();
+    if (user.role !== 'admin') {
+      window.location.href = 'student-dashboard.html';
+    }
+
+    document.getElementById('userName').textContent = `Admin: ${user.name}`;
+
+    // Load all complaints
+    async function loadComplaints() {
+      const container = document.getElementById('complaintsContainer');
+      const status = document.getElementById('filterStatus').value;
+      const category = document.getElementById('filterCategory').value;
+
+      let url = `${API_BASE_URL}/complaints?`;
+      if (status) url += `status=${status}&`;
+      if (category) url += `category=${category}`;
+
+      try {
+        const response = await fetch(url, {
+          headers: {
+            'Authorization': `Bearer ${getToken()}`
+          }
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          if (data.complaints.length === 0) {
+            container.innerHTML = '<p class="no-data">No complaints found.</p>';
+            return;
+          }
+
+          container.innerHTML = data.complaints.map(complaint => `
+            <div class="complaint-card admin-card">
+              <div class="complaint-header">
+                <div>
+                  <span class="complaint-category">${complaint.category}</span>
+                  <span class="status-badge status-${complaint.status.toLowerCase().replace(' ', '-')}">${complaint.status}</span>
+                </div>
+                <button onclick="openUpdateModal('${complaint._id}', '${complaint.status}', '${complaint.assignedTo}', '${complaint.remarks}')" 
+                  class="btn btn-small">Update</button>
+              </div>
+              <div class="student-info">
+                <strong>Student:</strong> ${complaint.studentName} (${complaint.studentEmail})
+              </div>
+              <p class="complaint-description">${complaint.description}</p>
+              <div class="complaint-footer">
+                <small>Submitted: ${new Date(complaint.createdAt).toLocaleDateString()}</small>
+                ${complaint.assignedTo ? `<small>Assigned to: ${complaint.assignedTo}</small>` : ''}
+              </div>
+              ${complaint.remarks ? `<div class="complaint-remarks"><strong>Remarks:</strong> ${complaint.remarks}</div>` : ''}
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<p class="error-message">Failed to load complaints</p>';
+        }
+      } catch (error) {
+        container.innerHTML = '<p class="error-message">Network error loading complaints</p>';
+      }
+    }
+
+    // Open update modal
+    function openUpdateModal(id, status, assignedTo, remarks) {
+      document.getElementById('complaintId').value = id;
+      document.getElementById('updateStatus').value = status;
+      document.getElementById('assignedTo').value = assignedTo || '';
+      document.getElementById('remarks').value = remarks || '';
+      document.getElementById('updateModal').style.display = 'block';
+    }
+
+    // Close modal
+    function closeModal() {
+      document.getElementById('updateModal').style.display = 'none';
+      document.getElementById('update-message').style.display = 'none';
+      document.getElementById('update-error').style.display = 'none';
+    }
+
+    // Handle update form submission
+    document.getElementById('updateForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const messageDiv = document.getElementById('update-message');
+      const errorDiv = document.getElementById('update-error');
+      messageDiv.style.display = 'none';
+      errorDiv.style.display = 'none';
+
+      const complaintId = document.getElementById('complaintId').value;
+      const formData = {
+        status: document.getElementById('updateStatus').value,
+        assignedTo: document.getElementById('assignedTo').value,
+        remarks: document.getElementById('remarks').value
+      };
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/complaints/${complaintId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${getToken()}`
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          messageDiv.textContent = 'Complaint updated successfully!';
+          messageDiv.style.display = 'block';
+          
+          setTimeout(() => {
+            closeModal();
+            loadComplaints();
+          }, 1500);
+        } else {
+          errorDiv.textContent = data.message || 'Failed to update complaint';
+          errorDiv.style.display = 'block';
+        }
+      } catch (error) {
+        errorDiv.textContent = 'Network error. Please try again.';
+        errorDiv.style.display = 'block';
+      }
+    });
+
+    // Load complaints on page load
+    loadComplaints();
+  </script>
+</body>
+</html>
